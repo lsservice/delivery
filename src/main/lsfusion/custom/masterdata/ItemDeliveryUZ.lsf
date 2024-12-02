@@ -1,0 +1,21 @@
+MODULE ItemDeliveryUZ;
+
+REQUIRE ItemDelivery;
+
+NAMESPACE MasterData;
+
+ikpu 'IKPU' = DATA STRING[100] (Item);
+
+EXTEND FORM items
+    PROPERTIES (i) READONLY ikpu
+;
+
+EXTEND FORM item
+    PROPERTIES ikpu(i)
+;
+
+DESIGN item{
+    column1{
+        MOVE PROPERTY (ikpu(i));
+    }
+}

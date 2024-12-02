@@ -1,0 +1,90 @@
+MODULE ItemDelivery;
+
+REQUIRE Product, Location;
+
+NAMESPACE MasterData;
+
+calcmd5 (STRING s)= FORMULA STRING[100] 'md5($1)';
+hashImage = DATA STRING (Item);
+urlHttpAccess 'Url image' = DATA STRING[255] (Item);
+
+WHEN SETCHANGED(urlHttpAccess(Item i)) DO{
+    hashImage(i) <- calcmd5(urlHttpAccess(i));
+}
+
+composition 'Composition' = DATA ISTRING[255](Item);
+vatValue 'VAT' = DATA NUMERIC[5,2] (Item);
+isCatchWeight 'Weight product' = DATA BOOLEAN (Item);
+quantum 'Quantum' = DATA NUMERIC[5,3] (Item);
+dataBarcode 'Barcode' = DATA STRING (Item);
+nutritionalValue 'Nutritional' = DATA NUMERIC[5,2](Item);
+purpose 'Purpose' = DATA NUMERIC[5,2](Item);
+storageRequirements 'Storage requirements' = DATA STRING(Item);
+expiryText 'Expires' = DATA STRING(Item);
+packageInfo 'Package info' = DATA STRING(Item);
+vendorName 'Vendor' = DATA STRING(Item);
+
+
+//price
+price 'Price' = DATA NUMERIC[16,2](Item, Location);
+dateTimeUpdatedPrice 'Price updated' = DATA DATETIME (Item, Location);
+
+promotionPrice 'Promotion price' = DATA NUMERIC[16,2](Item, Location);
+promotionFrom 'Promotion from' = DATA DATE (Item, Location);
+promotionTo 'Promotion to' = DATA DATE (Item, Location);
+
+//balance
+balance 'On hand' = DATA NUMERIC[16,2](Item, Location);
+dateTimeUpdatedBalance 'On hand updated' = DATA DATETIME (Item, Location);
+
+
+EXTEND FORM items
+    PROPERTIES (i) READONLY composition, vatValue, isCatchWeight, quantum, dataBarcode,
+        nutritionalValue, purpose, storageRequirements, expiryText, packageInfo, vendorName, urlHttpAccess
+;
+
+
+EXTEND FORM item
+    PROPERTIES (i) composition, vatValue, isCatchWeight, quantum, dataBarcode,
+        nutritionalValue, purpose, storageRequirements, expiryText, packageInfo, vendorName, urlHttpAccess
+    
+    OBJECTS l = Location
+    PROPERTIES READONLY name(l), price(i, l), promotionPrice(i, l), promotionFrom(i, l), promotionTo(i, l), dateTimeUpdatedPrice(i, l), balance(i, l), dateTimeUpdatedBalance(i, l)
+    FILTERGROUP location
+        FILTER 'Active' price(i, l) AND balance(i, l) DEFAULT
+        FILTER 'With price' price(i, l)
+        FILTER 'On hand' balance(i, l) > 0
+;
+
+DESIGN item{
+    pane{
+        column1{
+            MOVE PROPERTY (isCatchWeight(i));
+            MOVE PROPERTY (quantum(i));
+            MOVE PROPERTY (dataBarcode(i));
+            MOVE PROPERTY (vatValue(i));
+            MOVE PROPERTY (vendorName(i));
+            MOVE PROPERTY (urlHttpAccess(i));
+        }
+        column2{
+            MOVE PROPERTY (composition(i));
+            MOVE PROPERTY (nutritionalValue(i));
+            MOVE PROPERTY (purpose(i));
+            MOVE PROPERTY (storageRequirements(i));
+            MOVE PROPERTY (expiryText(i));
+            MOVE PROPERTY (packageInfo(i));
+            MOVE PROPERTY (volume(i));
+            MOVE PROPERTY (weight(i));
+        }
+        column3{
+            MOVE PROPERTY (description(i)){
+                alignment = STRETCH;
+                charWidth = 45;
+                caption = 'Description';
+            }
+        }
+    }
+    inventory{
+        MOVE BOX(l);
+    }
+}
