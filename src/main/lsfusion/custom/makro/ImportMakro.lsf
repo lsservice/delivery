@@ -1,0 +1,37 @@
+MODULE ImportMakro;
+
+REQUIRE Location;
+
+importLocation 'Import location' ()  {
+    LOCAL sap = STRING[20](INTEGER );
+    LOCAL name = STRING[15](INTEGER );
+
+    INPUT f = EXCELFILE DO {
+        NEWSESSION {
+            IMPORT XLS FROM f TO  sap = C, name = D;
+
+            FOR INTEGER i == 0 DO {sap(i) <- NULL;}
+
+            FOR imported(INTEGER i) AND sap(i) AND NOT location(sap(i)) DO NEW  l = Location {
+                id(l) <- sap(i);
+                name(l) <- name(i);
+            }
+
+            FOR sap(INTEGER i) AND Location lc == location(sap(i))  INLINE DO {
+                name(lc) <- name(i);
+            }
+
+            APPLY;
+            MESSAGE 'Import completed';
+        }
+    }
+}
+
+EXTEND FORM locations
+    PROPERTIES importLocation();
+
+DESIGN locations {
+    TOOLBARRIGHT(l) {
+        MOVE PROPERTY (importLocation()) FIRST ;
+    }
+}
