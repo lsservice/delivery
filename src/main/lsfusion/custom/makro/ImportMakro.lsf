@@ -1,6 +1,6 @@
 MODULE ImportMakro;
 
-REQUIRE Location;
+REQUIRE Location, ItemDeliveryUZ;
 
 importLocation 'Import location' ()  {
     LOCAL sap = STRING[20](INTEGER );
@@ -33,5 +33,40 @@ EXTEND FORM locations
 DESIGN locations {
     TOOLBARRIGHT(l) {
         MOVE PROPERTY (importLocation()) FIRST ;
+    }
+}
+
+
+importBalanceLocation 'Import balance' ()  {
+    NEWSESSION {
+        
+        balance(Item i, Location l) <- NULL;
+        
+        INPUT file = CSVFILE DO {
+            LOCAL f = FILE();
+            f() <- FILE(file);    
+    
+            LOCAL sap = STRING[20](INTEGER );    
+            LOCAL idItem = STRING[20](INTEGER );
+            LOCAL balanceItem = NUMERIC[16,2](INTEGER );
+            
+            IMPORT CSV '|' NOHEADER FROM f() AS FILE TO  sap, idItem, balanceItem;
+            
+            FOR INTEGER i AND [GROUP MAX Item ii BY id(ii)](idItem(i)) AND [GROUP MAX Location l BY id(l)](sap(i)) DO {
+                balance(item(idItem(i)), location(sap(i))) <- balanceItem(i);
+            }
+
+            APPLY;
+            MESSAGE 'Import completed';
+        }
+    }
+}
+
+EXTEND FORM locations
+    PROPERTIES importBalanceLocation();
+
+DESIGN locations {
+    TOOLBARRIGHT(l) {
+        MOVE PROPERTY (importBalanceLocation()) FIRST ;
     }
 }
