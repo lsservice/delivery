@@ -1,0 +1,70 @@
+MODULE LocationPricesImportCSVMakro;
+
+REQUIRE ItemDeliveryUZ, Location;
+
+NAMESPACE MasterData;
+
+pricesImport 'Импорт цен по местам хранения (csv)' (){
+    NEWSESSION {
+        INPUT file = CSVFILE DO {
+            LOCAL f = FILE();
+            f() <- FILE(file);
+
+            LOCAL locationId, itemId = STRING (INTEGER);
+            LOCAL itemPrice, promotionPrice = NUMERIC[16,2] (INTEGER);
+            LOCAL promotionFrom, promotionTo = DATE (INTEGER);
+
+            price(Item i, Location l) <- NULL;
+
+            //Код магазина|Код товара|Цена|Дата начала акции|Дата окончания акции|Акционная цена
+            IMPORT CSV '|' NOHEADER FROM f() AS FILE TO
+                    locationId, itemId, itemPrice, promotionPrice, promotionFrom, promotionTo;
+
+            imported(INTEGER  i) <- NULL WHERE i==0;
+
+            LOCAL item = Item(INTEGER);
+            LOCAL location = Location(INTEGER);
+            
+            item(INTEGER  i) <- item(itemId(i)) WHERE imported(i);
+            location(INTEGER  i) <- location(locationId(i)) WHERE imported(i);
+
+            LOCAL error = BOOLEAN (INTEGER);
+            error(INTEGER  i) <- TRUE WHERE imported(i) AND NOT (item(i) AND location(i));
+            
+            IF (GROUP SUM 1 IF error(INTEGER  i)) THEN {
+                MESSAGE  (CONCAT '\n','Данные не импортированы. Ошибки:',
+                    (GROUP CONCAT (CONCAT ', ', 'Позиция: '+STRING((INTEGER i)+1),
+                        (CONCAT ' ', 'не найден' IF NOT (item(i)), 'товар -', itemId(i)),
+                        (CONCAT ' ', 'не найден' IF NOT (location(i)), 'магазин -', locationId(i))
+                        ) IF error(i),'\n' ORDER i));
+                RETURN;
+            } ELSE {
+                IF (GROUP SUM 1 IF imported(INTEGER i)) THEN {
+                    // update
+                    FOR imported(INTEGER  i) AND Item item == item(i) AND Location l == location(i) DO {
+                        price(item, l) <- itemPrice(i);
+                        promotionPrice(item, l) <- promotionPrice(i) IF NOT promotionPrice(i) == 0.0;
+                        promotionFrom(item, l) <- promotionFrom(i);
+                        promotionTo(item, l) <- promotionTo(i);                        
+                    }
+
+                    APPLY;
+                    IF NOT canceled() THEN {
+                        MESSAGE 'Импорт выполнен' NOWAIT;
+                    }
+                } ELSE {
+                    MESSAGE 'Нет данных для импорта' NOWAIT;
+                }
+            }
+        }
+    }
+}
+
+WHEN SETCHANGED(price(Item i, Location l)) OR SETCHANGED(promotionPrice(i, l)) OR SETCHANGED(promotionFrom(i, l)) OR SETCHANGED(promotionTo(i, l)) DO {
+    dateTimeUpdatedPrice(i, l) <- currentDateTime();
+}
+
+EXTEND FORM items
+    PROPERTIES () pricesImport DRAW i TOOLBAR
+;
+

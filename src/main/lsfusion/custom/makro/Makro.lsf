@@ -1,4 +1,4 @@
 MODULE Makro;
 
 REQUIRE Eval, ProcessMonitor, Backup, ItemDeliveryUZ, ImportMakro,
-        ItemsImportCSVCustom;
+        ItemsImportCSVCustom, LocationPricesImportCSVMakro;
