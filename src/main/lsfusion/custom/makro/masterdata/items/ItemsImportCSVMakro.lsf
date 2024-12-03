@@ -1,0 +1,139 @@
+MODULE ItemsImportCSVCustom;
+
+REQUIRE ItemDeliveryUZ;
+
+NAMESPACE MasterData;
+
+uomByName (STRING name) = GROUP MIN Uom o BY name(o);
+
+importItem 'Импорт товара (csv)' (){
+    NEWSESSION {
+        INPUT file = CSVFILE DO {
+            LOCAL f = FILE();
+            f() <- FILE(file);
+            
+            //Код|Штрихкод|Наименование|URl изображения|Единица измерения|ИКПУ|НДС|Вес нетто|Код категории 1|Категория 1|Код категории 2| Категория 2|...
+            LOCAL id, barcode, name, imageURL, nameUom, ikpu = STRING (INTEGER);
+            LOCAL vat = NUMERIC[5,2] (INTEGER);
+            LOCAL weight = NUMERIC[11,3] (INTEGER);
+            LOCAL idCategory1, nameCategory1, 
+                idCategory2, nameCategory2, 
+                idCategory3, nameCategory3, 
+                idCategory4, nameCategory4, 
+                idCategory5, nameCategory5,
+                idCategory6, nameCategory6, 
+                idCategory7, nameCategory7, 
+                idCategory8, nameCategory8, 
+                idCategory9, nameCategory9, 
+                idCategory10, nameCategory10 = STRING (INTEGER);
+
+            LOCAL idCategory, nameCategory = STRING (INTEGER, INTEGER);
+            
+            LOCAL item = Item(INTEGER);
+            LOCAL category = Category(INTEGER, INTEGER);  // (строка в CSV, номер категории в строке)
+            LOCAL uom = Uom(INTEGER);
+
+            
+            IMPORT CSV '|' NOHEADER FROM f() AS FILE TO 
+                    id, barcode, name, imageURL, nameUom, ikpu, vat, weight,
+                    idCategory1, nameCategory1,
+                    idCategory2, nameCategory2,
+                    idCategory3, nameCategory3,
+                    idCategory4, nameCategory4,
+                    idCategory5, nameCategory5,
+                    idCategory6, nameCategory6,
+                    idCategory7, nameCategory7,
+                    idCategory8, nameCategory8,
+                    idCategory9, nameCategory9,
+                    idCategory10, nameCategory10;
+
+            imported(INTEGER  i) <- NULL WHERE i==0;
+
+            idCategory(INTEGER i, 1)  <- idCategory1(i)  WHERE imported(i);
+            idCategory(INTEGER i, 2)  <- idCategory2(i)  WHERE imported(i);
+            idCategory(INTEGER i, 3)  <- idCategory3(i)  WHERE imported(i);
+            idCategory(INTEGER i, 4)  <- idCategory4(i)  WHERE imported(i);
+            idCategory(INTEGER i, 5)  <- idCategory5(i)  WHERE imported(i);
+            idCategory(INTEGER i, 6)  <- idCategory6(i)  WHERE imported(i);
+            idCategory(INTEGER i, 7)  <- idCategory7(i)  WHERE imported(i);
+            idCategory(INTEGER i, 8)  <- idCategory8(i)  WHERE imported(i);
+            idCategory(INTEGER i, 9)  <- idCategory9(i)  WHERE imported(i);
+            idCategory(INTEGER i, 10) <- idCategory10(i) WHERE imported(i);
+
+            nameCategory(INTEGER i, 1)  <- nameCategory1(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 2)  <- nameCategory2(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 3)  <- nameCategory3(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 4)  <- nameCategory4(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 5)  <- nameCategory5(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 6)  <- nameCategory6(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 7)  <- nameCategory7(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 8)  <- nameCategory8(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 9)  <- nameCategory9(i)  WHERE imported(i);
+            nameCategory(INTEGER i, 10) <- nameCategory10(i) WHERE imported(i);
+
+            item(INTEGER  i) <- item(id(i)) WHERE imported(i);
+            category(INTEGER i, INTEGER ii)  <- category(idCategory(i, ii)) WHERE imported(i) AND idCategory(i, ii);
+            uom(INTEGER  i) <- uomByName(nameUom(i)) WHERE imported(i);
+          
+            IF (GROUP SUM 1 IF imported(INTEGER i)) THEN {
+                // insert UOM
+                FOR INTEGER i = [GROUP MAX INTEGER j BY nameUom(j)](STRING name) AND imported(i) AND NOT uom(i) DO NEW u = Uom {                    
+                    name(u) <- nameUom(i);                    
+                }
+
+                uom(INTEGER  i) <- uomByName(nameUom(i)) WHERE imported(i);
+                
+                // insert category
+                FOR INTEGER i = [GROUP MAX INTEGER j BY INTEGER jj , idCategory(j, jj)](INTEGER ii, STRING name) AND idCategory(i, ii) AND imported(i) AND NOT category(i, ii) DO NEW c = Category {
+                    id(c) <- idCategory(i, ii);
+                    name(c) <- nameCategory(i, ii);
+                }
+
+                category(INTEGER i, INTEGER ii)  <- category(idCategory(i, ii)) WHERE imported(i) AND idCategory(i, ii);
+                
+                // update category
+                FOR imported(INTEGER  i) AND category(i, INTEGER ii) DO {
+                    id(category(i, ii)) <- idCategory(i, ii);
+                    name(category(i, ii)) <- nameCategory(i, ii);
+                    parent(category(i, ii)) <- category(i, ii - 1) IF ii > 0;
+                }
+
+                // insert item   
+                LOCAL maxCategoryIndex = INTEGER (INTEGER);
+                LOCAL categoryItem = Category (INTEGER);
+                maxCategoryIndex(INTEGER  i) <- (GROUP MAX INTEGER ii IF idCategory(i, ii)) WHERE imported(i);
+                categoryItem(INTEGER i) <- category(idCategory(i, maxCategoryIndex(i))) WHERE imported(i);
+                
+                FOR INTEGER i = [GROUP MAX INTEGER j BY id(j)](STRING id) AND imported(i) AND NOT item(i) DO NEW item = Product {
+                    item(i) <- item;
+                }
+
+                // update item          
+                FOR imported(INTEGER  i) AND id(i) AND Item item = item(i) DO {
+                    id(item) <- id(i);
+                    dataBarcode(item) <- barcode(i);
+                    dataName(item) <- name(i);
+                    urlHttpAccess(item) <- imageURL(i);
+                    uom(item) <- uom(i);
+                    ikpu(item) <- ikpu(i);
+                    vatValue(item) <- vat(i);
+                    weight(item) <- weight(i);
+                    category(item) <- categoryItem(i);
+                }
+             
+                APPLY;
+                IF NOT canceled() THEN {
+                    MESSAGE 'Импорт выполнен' NOWAIT;
+                }
+
+            } ELSE {
+                MESSAGE 'Нет данных для импорта' NOWAIT;
+            }
+        }
+    }
+}
+
+
+EXTEND FORM items
+    PROPERTIES () importItem DRAW i TOOLBAR
+;
