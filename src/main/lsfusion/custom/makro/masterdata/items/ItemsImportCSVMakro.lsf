@@ -6,7 +6,7 @@ NAMESPACE MasterData;
 
 uomByName (STRING name) = GROUP MIN Uom o BY name(o);
 
-importItem 'Импорт товара (csv)' (){
+itemsImport 'Импорт товара (csv)' (){
     NEWSESSION {
         INPUT file = CSVFILE DO {
             LOCAL f = FILE();
@@ -135,5 +135,5 @@ importItem 'Импорт товара (csv)' (){
 
 
 EXTEND FORM items
-    PROPERTIES () importItem DRAW i TOOLBAR
+    PROPERTIES () itemsImport DRAW i TOOLBAR
 ;
