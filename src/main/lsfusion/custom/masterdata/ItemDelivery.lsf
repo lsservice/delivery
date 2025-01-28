@@ -30,8 +30,12 @@ price 'Price' = DATA NUMERIC[16,2](Item, Location);
 dateTimeUpdatedPrice 'Price updated' = DATA DATETIME (Item, Location);
 
 promotionPrice 'Promotion price' = DATA NUMERIC[16,2](Item, Location);
-promotionFrom 'Promotion from' = DATA DATE (Item, Location);
-promotionTo 'Promotion to' = DATA DATE (Item, Location);
+promotionFrom 'Promotion from' = DATA STRING (Item, Location);
+promotionTo 'Promotion to' = DATA STRING (Item, Location);
+
+oldPrice (Item i, Location l) = price(i, l) IF promotionPrice(i, l);
+currentPrice (Item i, Location l) = IF promotionPrice(i, l) THEN promotionPrice(i, l) ELSE price(i, l);
+
 
 //balance
 balance 'On hand' = DATA NUMERIC[16,2](Item, Location);
@@ -42,7 +46,6 @@ EXTEND FORM items
     PROPERTIES (i) READONLY composition, vatValue, isCatchWeight, quantum, dataBarcode,
         nutritionalValue, purpose, storageRequirements, expiryText, packageInfo, vendorName, urlHttpAccess
 ;
-
 
 EXTEND FORM item
     PROPERTIES (i) composition, vatValue, isCatchWeight, quantum, dataBarcode,
@@ -55,6 +58,13 @@ EXTEND FORM item
         FILTER 'With price' price(i, l)
         FILTER 'On hand' balance(i, l) > 0
 ;
+
+GROUP measure;
+GROUP volume;
+
+GROUP barcode;
+GROUP description;
+
 
 DESIGN item{
     pane{

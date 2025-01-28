@@ -4,7 +4,7 @@ REQUIRE ItemDeliveryUZ, Location;
 
 NAMESPACE MasterData;
 
-pricesImport 'Импорт цен по местам хранения (csv)' (){
+pricesImport 'Prices import(csv)' (){
     NEWSESSION {
         INPUT file = CSVFILE DO {
             LOCAL f = FILE();
@@ -12,13 +12,17 @@ pricesImport 'Импорт цен по местам хранения (csv)' (){
 
             LOCAL locationId, itemId = STRING (INTEGER);
             LOCAL itemPrice, promotionPrice = NUMERIC[16,2] (INTEGER);
-            LOCAL promotionFrom, promotionTo = DATE (INTEGER);
+            LOCAL promotionFrom, promotionTo = STRING (INTEGER);
 
             price(Item i, Location l) <- NULL;
+            promotionPrice(Item i, Location l) <- NULL;
+            promotionFrom(Item i, Location l) <- NULL;
+            promotionTo(Item i, Location l) <- NULL;
+            
 
             //Код магазина|Код товара|Цена|Дата начала акции|Дата окончания акции|Акционная цена
             IMPORT CSV '|' NOHEADER FROM f() AS FILE TO
-                    locationId, itemId, itemPrice, promotionPrice, promotionFrom, promotionTo;
+                    locationId, itemId, itemPrice, promotionFrom, promotionTo, promotionPrice;
 
             imported(INTEGER  i) <- NULL WHERE i==0;
 
@@ -31,31 +35,32 @@ pricesImport 'Импорт цен по местам хранения (csv)' (){
             LOCAL error = BOOLEAN (INTEGER);
             error(INTEGER  i) <- TRUE WHERE imported(i) AND NOT (item(i) AND location(i));
             
-            IF (GROUP SUM 1 IF error(INTEGER  i)) THEN {
-                MESSAGE  (CONCAT '\n','Данные не импортированы. Ошибки:',
-                    (GROUP CONCAT (CONCAT ', ', 'Позиция: '+STRING((INTEGER i)+1),
-                        (CONCAT ' ', 'не найден' IF NOT (item(i)), 'товар -', itemId(i)),
-                        (CONCAT ' ', 'не найден' IF NOT (location(i)), 'магазин -', locationId(i))
-                        ) IF error(i),'\n' ORDER i));
-                RETURN;
-            } ELSE {
-                IF (GROUP SUM 1 IF imported(INTEGER i)) THEN {
-                    // update
-                    FOR imported(INTEGER  i) AND Item item == item(i) AND Location l == location(i) DO {
-                        price(item, l) <- itemPrice(i);
-                        promotionPrice(item, l) <- promotionPrice(i) IF NOT promotionPrice(i) == 0.0;
-                        promotionFrom(item, l) <- promotionFrom(i);
-                        promotionTo(item, l) <- promotionTo(i);                        
-                    }
-
-                    APPLY;
-                    IF NOT canceled() THEN {
-                        MESSAGE 'Импорт выполнен' NOWAIT;
-                    }
-                } ELSE {
-                    MESSAGE 'Нет данных для импорта' NOWAIT;
+//            IF (GROUP SUM 1 IF error(INTEGER  i)) THEN {
+//                MESSAGE GROUP SUM 1 IF error(INTEGER i);
+////                MESSAGE  (CONCAT '\n','Данные не импортированы. Ошибки:',
+////                    (GROUP CONCAT (CONCAT ', ', 'Позиция: '+STRING((INTEGER i)+1),
+////                        (CONCAT ' ', 'не найден' IF NOT (item(i)), 'товар -', itemId(i)),
+////                        (CONCAT ' ', 'не найден' IF NOT (location(i)), 'магазин -', locationId(i))
+////                        ) IF error(i),'\n' ORDER i));
+//                RETURN;
+//            } ELSE {
+            IF (GROUP SUM 1 IF imported(INTEGER i)) THEN {
+                // update
+                FOR imported(INTEGER  i) AND Item item == item(i) AND Location l == location(i) DO {
+                    price(item, l) <- itemPrice(i);
+                    promotionPrice(item, l) <- promotionPrice(i) IF NOT promotionPrice(i) == 0.0;
+                    promotionFrom(item, l) <- promotionFrom(i);
+                    promotionTo(item, l) <- promotionTo(i);                        
                 }
+
+                APPLY;
+                IF NOT canceled() THEN {
+                    MESSAGE 'Импорт выполнен' NOWAIT;
+                }
+            } ELSE {
+                MESSAGE 'Нет данных для импорта' NOWAIT;
             }
+            
         }
     }
 }

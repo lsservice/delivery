@@ -1,0 +1,214 @@
+MODULE YandexEda;
+
+REQUIRE ItemDelivery;
+
+NAMESPACE YandexEda;
+
+//-------------------- АУТЕНТИФИКАЦИЯ ------------------------//
+CLASS YandexEdaAuth 'Аутентификация ЯндексЕда';
+
+id 'Код' = DATA STRING (YandexEdaAuth);
+clientId 'Client ID' = DATA STRING[100] (YandexEdaAuth);
+clientSecret 'Client Secret'= DATA STRING[100] (YandexEdaAuth);
+grantType = DATA STRING[100] (YandexEdaAuth);
+scope = DATA STRING[20] (YandexEdaAuth);
+activeToken = DATA STRING (YandexEdaAuth);
+
+//сессии
+CLASS YandexEdaSession 'Сессии';
+TABLE YandexEdaSession(YandexEdaSession);
+
+auth = DATA YandexEdaAuth (YandexEdaSession);
+dateTime 'Дата/время' = DATA DATETIME (YandexEdaSession);
+expired 'Истёк'= DATA BOOLEAN (YandexEdaSession);
+id 'Токен' = DATA STRING (YandexEdaSession) IN id CHARWIDTH 10;
+INDEX id(YandexEdaSession ys), expired(ys);
+yandexEdaSession = GROUP AGGR YandexEdaSession yandexEdaSession BY id(yandexEdaSession)
+    IF NOT expired(yandexEdaSession);
+
+
+EXTEND FORM integrationData
+    OBJECTS yandex = YandexEdaAuth
+    PROPERTIES (yandex) id, clientId, clientSecret
+    PROPERTIES (yandex) NEW, EDIT, DELETE
+
+    OBJECTS yandexSession = YandexEdaSession LAST
+    PROPERTIES (yandexSession) READONLY dateTime, expired, id
+    FILTERS auth(yandexSession) = yandex
+    FILTERGROUP expired
+        FILTER 'Активные' NOT expired(yandexSession) DEFAULT
+;
+
+
+DESIGN integrationData{
+    pane{
+        NEW yandexEda{
+            caption = 'YandexEda';
+            MOVE BOX (yandex);
+            MOVE BOX (yandexSession);
+        }
+    }
+}
+
+
+//-------------------- /security/oauth/token------------------------//
+security_oauth_token (STRING clieint_id, STRING client_secret, STRING grant_type, STRING scope) {
+    IF NOT (GROUP MAX YandexEdaAuth u IF clieint_id == clientId(u) AND clientSecret(u) == client_secret) THEN {
+        statusHttpTo() <- 401;
+        EXPORT JSON FROM code = 100,
+        description = 'Не найден пользователь';
+    }
+    ELSE {
+        generateUUID();
+        NEW y = YandexEdaSession {
+            auth(y) <- GROUP MAX YandexEdaAuth u IF clieint_id == clientId(u) AND clientSecret(u) == client_secret;
+            id(y) <- generatedUUID();
+            dateTime(y) <- currentDateTime();
+        }
+        APPLY NESTED LOCAL;
+        EXPORT JSON FROM access_token = generatedUUID();
+    }
+}@@noauth;
+
+//-------------------- v1/security/oauth/token------------------------//
+v1_security_oauth_token (STRING clieint_id, STRING client_secret, STRING grant_type, STRING scope) {
+    security_oauth_token (clieint_id, client_secret, grant_type, scope);
+}@@noauth;
+
+//-------------------- НОМЕНКЛАТУРА------------------------//
+
+yandexName (Item i) = ABSTRACT ISTRING;
+
+GROUP description;
+
+parentId (Category g) = id(parent(g));
+categoryId (Item i) = ABSTRACT CASE STRING[100];
+modiffersGroup (Item i) = ABSTRACT STRING;
+
+//description
+general (Item i) = description(i);
+composition  = ABSTRACT STRING (Item);
+nutritionalValue (Item i) = ABSTRACT STRING;
+purpose (Item i) = ABSTRACT STRING;
+packageInfo (Item i) = ABSTRACT STRING;
+vendorName (Item i) = ABSTRACT STRING;
+inOnlineYandex (Item i, Location d) = ABSTRACT CASE BOOLEAN;
+
+stock (YandexEdaAuth client, STRING id) = ABSTRACT Location;
+
+stock (YandexEdaAuth client, STRING id) += GROUP MAX Location l IF client IS YandexEdaAuth AND id IS STRING AND l IS Location;
+
+GROUP barcode;
+
+//измерения
+GROUP measure;
+GROUP volume;
+
+initcap (TEXT p1) = FORMULA 'initcap($1)';
+nameCat (STRING name) = replace(lower(name), getWord(lower(name), ' ', 1), initcap(getWord(lower(name), ' ', 1)));
+
+FORM nomenclature 'Номенклатура ЯндексЕда'
+    OBJECTS s = Location PANEL
+
+    OBJECTS g = Category EXTID 'categories'
+    PROPERTIES id(g), = name(g) EXTID 'name', idParent(g) EXTID 'parentId', = IF g IS Category THEN '1' EXTID 'sortOrder'
+    FILTERS id(g)
+
+    OBJECTS i = Item EXTID 'items'
+    PROPERTIES id(i), oldPrice(i,s), name(i) EXTID 'name', idCategory(i) EXTID 'categoryId',
+        = vatValue(i) EXTID 'vat', = OVERRIDE id(i), '' EXTID 'vendorCode',
+        = IF isCatchWeight(i) THEN TTRUE ELSE TFALSE EXTID 'isCatchWeight', currentPrice(i, s) EXTID 'price'
+    PROPERTIES IN measure = IF isCatchWeight(i) THEN 1000 ELSE round0(weight(i) * 1000) EXTID 'value',
+        = IF i IS Item THEN 'GRM' EXTID 'unit', = IF isCatchWeight(i) THEN 1 EXTID 'quantum'
+    PROPERTIES IN volume = round0(volume(i)) EXTID 'value', = IF volume(i) THEN 'DMQ' EXTID 'unit'
+
+    PROPERTIES IN barcode dataBarcode(i) EXTID 'value',
+        = IF dataBarcode(i) THEN 'ean13' EXTID 'type',
+        = IF isCatchWeight(i) THEN 'ean13-tail-gram-5' ELSE 'none' EXTID 'weightEncoding'
+    PROPERTIES IN description = OVERRIDE name(i), '' EXTID 'general', composition(i), nutritionalValue(i), purpose(i),
+        = OVERRIDE nameCountryOrigin(i), '' EXTID 'vendorCountry', packageInfo(i),
+        vendorName(i)
+
+    OBJECTS images = Item EXTID 'images'
+    PROPERTIES urlHttpAccess(images) EXTID 'url', hashImage(images) EXTID 'hash'
+    FILTERS images = i
+;
+
+FORM availability 'Наличие Яндекс.Еда'
+    OBJECTS s = Location PANEL
+
+    OBJECTS i = Item EXTID 'items'
+    PROPERTIES id(i), balance(i, s) EXTID 'stock'
+;
+
+FORM prices 'Цены Яндекс.Еда'
+    OBJECTS s = Location PANEL
+
+    OBJECTS i = Item EXTID 'items'
+    PROPERTIES id(i), currentPrice(i, s) EXTID 'price', vatValue(i) EXTID 'vat',  oldPrice(i,s)
+    FILTERS currentPrice(i,s)
+;
+
+
+carrierSelect ABSTRACT LIST(YandexEdaAuth);
+beforeExportData ABSTRACT LIST (YandexEdaAuth);
+
+//-------------------- /v1/nomenclature/{placeId}/composition(availability)------------------------//
+v1_nomenclature(FILE f){
+    logToFile('yandex', CONCAT ' : ', 'Поступил запрос ', servletPath() + pathInfo());
+    LOCAL tokenClient = STRING ();
+    tokenClient() <- OVERRIDE getWord(headers('Authorization'), ' ', 2), getWord(headers('authorization'), ' ', 2);
+    LOCAL aggr = YandexEdaAuth();
+    aggr() <- auth(yandexEdaSession(tokenClient()));
+    IF NOT (aggr()) THEN {
+        statusHttpTo() <- 401;
+        logToFile('yandex', CONCAT ' : ', 'ERROR Не найден токен авторизации', tokenClient());
+        EXPORT JSON FROM code = 100, description = 'Не найден токен авторизации';
+    }
+    ELSE {
+        LOCAL method = STRING ();
+        method() <- replace(servletPath() + pathInfo(), TEXT('/exec/v1/nomenclature/'), TEXT (''));
+        method() <- replace(servletPath() + pathInfo(), TEXT('/exec/nomenclature/'), TEXT (''));
+        LOCAL store = STRING ();
+        LOCAL param = STRING ();
+        store() <- getWord(method(), '/', 1);
+        param() <- getWord(method(), '/', 2);
+        LOCAL s = Location();
+        s() <- location(store());
+        IF NOT s() THEN {
+            statusHttpTo() <- 404;
+            logToFile('yandex', CONCAT ' : ', ' ERROR Не найден магазин', store());
+            EXPORT FROM error = 'Не найден магазин', storeId = store();
+        }
+        LOCAL countItems = INTEGER ();
+        countItems() <- GROUP SUM 1 IF inOnlineYandex(Item i, s());
+        IF param() == 'availability' THEN {
+            logToFile('yandex', CONCAT ' : ', 'Запрос остатков', countItems() + ' товаров');
+            EXPORT availability OBJECTS s = s() FILTERS balance(i, s) JSON;
+        }
+        IF param() == 'composition' THEN{
+            beforeExportData(aggr());
+            logToFile('yandex', CONCAT ' : ', 'Запрос номенклатуры', countItems() + ' товаров');
+            EXPORT nomenclature OBJECTS s = s() FILTERS price(i, s) JSON;
+        }
+        IF param() == 'prices' THEN {
+            logToFile('yandex', CONCAT ' : ', 'Запрос цен', countItems() + ' товаров');
+            EXPORT prices OBJECTS s = s() FILTERS balance(i, s) JSON;
+        }
+    }
+}@@noauth;
+
+nomenclature(FILE f){
+    v1_nomenclature(f);
+}@@noauth;
+
+closeExpiriedToken(){
+    expired(YandexEdaSession y) <- TRUE IF NOT expired(y) AND DATE(dateTime(y)) < currentDate();
+    DELETE YandexEdaSession y WHERE expired(y);
+}
+
+//-------------------- /v1/menu/{placeId}/promos------------------------//
+v1_menu(FILE f){
+    EXPORT JSON FROM result = 'ok';
+}
+

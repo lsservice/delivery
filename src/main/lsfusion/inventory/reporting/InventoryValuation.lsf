@@ -71,7 +71,7 @@ DESIGN inventoryValuation {
 }
 
 NAVIGATOR {
-    reporting {
+    Inventory.dashboards {
         NEW inventoryValuation;
     }
 }

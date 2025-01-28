@@ -1,0 +1,9 @@
+MODULE YandexEdaUz;
+
+REQUIRE YandexEda, ItemDeliveryUZ;
+
+GROUP serviceCodesUz;
+
+EXTEND FORM nomenclature
+    PROPERTIES (i) IN serviceCodesUz ikpu EXTID 'mxikCodeUz'
+;

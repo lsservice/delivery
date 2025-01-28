@@ -14,8 +14,8 @@ itemsImport 'Импорт товара (csv)' (){
             
             //Код|Штрихкод|Наименование|URl изображения|Единица измерения|ИКПУ|НДС|Вес нетто|Код категории 1|Категория 1|Код категории 2| Категория 2|...
             LOCAL id, barcode, name, imageURL, nameUom, ikpu = STRING (INTEGER);
-            LOCAL vat = NUMERIC[5,2] (INTEGER);
-            LOCAL weight = NUMERIC[11,3] (INTEGER);
+            LOCAL vat = NUMERIC[10,4] (INTEGER);
+            LOCAL weight = NUMERIC[11,4] (INTEGER);
             LOCAL idCategory1, nameCategory1, 
                 idCategory2, nameCategory2, 
                 idCategory3, nameCategory3, 
@@ -32,6 +32,7 @@ itemsImport 'Импорт товара (csv)' (){
             LOCAL item = Item(INTEGER);
             LOCAL category = Category(INTEGER, INTEGER);  // (строка в CSV, номер категории в строке)
             LOCAL uom = Uom(INTEGER);
+            LOCAL isCatchWeight = BOOLEAN (INTEGER);
 
             
             IMPORT CSV '|' NOHEADER FROM f() AS FILE TO 
@@ -74,7 +75,8 @@ itemsImport 'Импорт товара (csv)' (){
             item(INTEGER  i) <- item(id(i)) WHERE imported(i);
             category(INTEGER i, INTEGER ii)  <- category(idCategory(i, ii)) WHERE imported(i) AND idCategory(i, ii);
             uom(INTEGER  i) <- uomByName(nameUom(i)) WHERE imported(i);
-          
+            isCatchWeight(INTEGER i) <- nameUom(i) = 'KG';
+            
             IF (GROUP SUM 1 IF imported(INTEGER i)) THEN {
                 // insert UOM
                 FOR INTEGER i = [GROUP MAX INTEGER j BY nameUom(j)](STRING name) AND imported(i) AND NOT uom(i) DO NEW u = Uom {                    
@@ -119,6 +121,7 @@ itemsImport 'Импорт товара (csv)' (){
                     vatValue(item) <- vat(i);
                     weight(item) <- weight(i);
                     category(item) <- categoryItem(i);
+                    isCatchWeight(item) <- isCatchWeight(i);
                 }
              
                 APPLY;
